@@ -1,4 +1,4 @@
 cd build
-main1.exe
+main.exe
 cd ..
 

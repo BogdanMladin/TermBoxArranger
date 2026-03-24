@@ -1,5 +1,8 @@
+
 // clang-format off
 #include <windows.h>
+#include <consoleapi3.h>
+#include <wincontypes.h>
 #include <sysinfoapi.h>
 #include <processenv.h>
 #include <winbase.h>
@@ -9,7 +12,6 @@
 #include <fileapi.h>
 #include <consoleapi2.h>
 #include <consoleapi.h>
-#include <winnt.h>
 #include <winuser.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -72,82 +74,50 @@ int main() {
   HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
   if (hOut == INVALID_HANDLE_VALUE) {
     return GetLastError();
+  }
+  DWORD dwMode = 0;
+  if (!GetConsoleMode(hOut, &dwMode)) {
+    return GetLastError();
+  }
 
-    DWORD dwMode = 0;
-    if (!GetConsoleMode(hOut, &dwMode)) {
-      return GetLastError();
-    }
+  dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+  if (!SetConsoleMode(hOut, dwMode)) {
+    return GetLastError();
+  }
 
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    if (!SetConsoleMode(hOut, dwMode)) {
-      return GetLastError();
-    }
 
-    int frameCount = 0;
-    int frameCountDisplay = 0;
-    int targetFps = 60;
-    DWORD frameDuration = 1000 / targetFps;
+  //start input loop
 
-    printToStdHandle("\x1b[?25l");
-    bool running = true;
-    while (running) {
-      DWORD frameStart = GetTickCount();
+  HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
 
-      frameCount++;
-      if (frameCount % targetFps == 0) {
-        frameCountDisplay++;
+  DWORD mode;
+  GetConsoleMode(hIn, &mode);
+
+  mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+  mode |= ENABLE_WINDOW_INPUT; // optional (resize events)
+
+  SetConsoleMode(hIn, mode);
+
+  int running = 1;
+
+  while(running){
+    INPUT_RECORD recordArray[1];
+    DWORD numberOfEventsRead;
+    ReadConsoleInput(hIn, recordArray, 1, &numberOfEventsRead);
+
+    INPUT_RECORD record = recordArray[0];
+
+    if(record.EventType == KEY_EVENT){
+      if(record.Event.KeyEvent.wVirtualKeyCode == 'Q'){
+        running = 0;
       }
-
-      printToStdHandle("\x1b[2J\x1b[H");
-
-      char result[100];
-      sprintf(result, "%d", frameCountDisplay);
-      printToStdHandle(result);
-
-      DWORD frameEnd = GetTickCount();
-      DWORD msElapsed = frameEnd - frameStart;
-
-      if (msElapsed < frameDuration) {
-        Sleep(frameDuration - msElapsed);
-      }
     }
+  
+  }
 
-    // real32 GameUpdateHz = 60;
-    // real32 TargetSecondsPerFrame = 1.0f / GameUpdateHz;
-    // LARGE_INTEGER WorkCounter = win32GetWallClock();
-    // float WorkSecondsElapsed = win32GetSecondsElapsed(LastCounter,
-    // WorkCounter);
-    //
-    // float SecondsElapsedPerFrame = WorkSecondsElapsed;
-    // if (SecondsElapsedPerFrame < TargetSecondsPerFrame) {
-    //   if (SleepIsGranular) {
-    //     DWORD SleepMs =
-    //         (DWORD)(1000.0f * (TargetSecondsPerFrame -
-    //         SecondsElapsedPerFrame));
-    //     if (SleepMs > 0) // i added the -1, something weird happening
-    //                      // with the sleep calculations
-    //     {
-    //       Sleep(SleepMs); // same here
-    //     }
-    //   }
-    //
-    //   TestSecondsElapsedPerFrame =
-    //       win32GetSecondsElapsed(LastCounter, win32GetWallClock());
-    // Assert(TestSecondsElapsedPerFrame <=
-    // TargetSecondsPerFrame);
-
-    // while (SecondsElapsedPerFrame <
-    // TargetSecondsPerFrame)
-    //{
-    //     SecondsElapsedPerFrame =
-    //     win32GetSecondsElapsed(LastCounter,
-    //     win32GetWallClock());
-    // }
-    // }
-
-    printToStdHandle("strlen result: %d|");
-    // Try some Set Graphics Rendition (SGR) terminal escape sequences
-    // clang-format off
+  printToStdHandle("strlen result: %d|");
+  // Try some Set Graphics Rendition (SGR) terminal escape sequences
+  // clang-format off
   // WriteFile(hOut, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped)
   printToStdHandle("\x1b[31mThis text has a red foreground using SGR.31.\r\n");
   printToStdHandle("\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to ");
@@ -158,14 +128,8 @@ int main() {
   wprintf( L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts " L"to apply many colors in the same command. Note the colors are applied " L"from left to right so only the right-most option of foreground cyan " L"(SGR.36) and background bright white (SGR.107) is effective.\r\n");
   wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
   wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
-    // clang-format on
-
-    // Game loop
-    // UINT DesiredSchedulerMs = 1;
-    // char SleepIsGranular =
-    //     (timeBeginPeriod(DesiredSchedulerMs) == TIMERR_NOERROR);
-
-    system("pause");
-    return 0;
-  }
+  // clang-format on
+  
+  system("pause");
+  return 0;
 }
