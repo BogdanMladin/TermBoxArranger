@@ -38,86 +38,114 @@ typedef float real32;
 typedef double real64;
 
 global_variable int64 GlobalPerfCountFrequency;
+#define BUFFER_SIZE_BYTES 1024
 
-internal int StrLen(const char *s) {
-  int result = 0;
-  while (*s) {
-    result++;
-    s++;
-  }
-  return result;
+internal int StrLen(const char *s)
+{
+    int result = 0;
+    while (*s)
+    {
+        result++;
+        s++;
+    }
+    return result;
 }
-internal void printToStdHandle(const char *s) {
-  HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-  DWORD bytesWritten;
-  WriteFile(handle, s, strlen(s), &bytesWritten, NULL);
-}
-
-inline LARGE_INTEGER win32GetWallClock() {
-  LARGE_INTEGER Result;
-  QueryPerformanceCounter(&Result);
-  return (Result);
+internal void printToStdHandle(const char *s)
+{
+    HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD bytesWritten;
+    WriteFile(handle, s, strlen(s), &bytesWritten, NULL);
 }
 
-inline float win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End) {
-  float Result = ((float)(End.QuadPart - Start.QuadPart) /
-                  (float)GlobalPerfCountFrequency);
-  return (Result);
+inline LARGE_INTEGER win32GetWallClock()
+{
+    LARGE_INTEGER Result;
+    QueryPerformanceCounter(&Result);
+    return (Result);
 }
 
-int main() {
+inline float win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+{
+    float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)GlobalPerfCountFrequency);
+    return (Result);
+}
 
-  FreeConsole();
-  AllocConsole();
+internal void FillBuffer(char *buffer, int bufferSize, int &bytesWritten)
+{
+    for (int i = 0; i < 3; i++)
+    {
+        buffer[i] = 'a';
+    }
+    bytesWritten = 3;
+}
 
-  // Set output mode to handle virtual terminal sequences
-  HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  if (hOut == INVALID_HANDLE_VALUE) {
-    return GetLastError();
-  }
-  DWORD dwMode = 0;
-  if (!GetConsoleMode(hOut, &dwMode)) {
-    return GetLastError();
-  }
+int main()
+{
 
-  dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-  if (!SetConsoleMode(hOut, dwMode)) {
-    return GetLastError();
-  }
+    FreeConsole();
+    AllocConsole();
 
+    // Set output mode to handle virtual terminal sequences
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE)
+    {
+        return GetLastError();
+    }
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode))
+    {
+        return GetLastError();
+    }
 
-  //start input loop
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (!SetConsoleMode(hOut, dwMode))
+    {
+        return GetLastError();
+    }
 
-  HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    // start input loop
 
-  DWORD mode;
-  GetConsoleMode(hIn, &mode);
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
 
-  mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
-  mode |= ENABLE_WINDOW_INPUT; // optional (resize events)
+    DWORD mode;
+    GetConsoleMode(hIn, &mode);
 
-  SetConsoleMode(hIn, mode);
+    mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+    mode |= ENABLE_WINDOW_INPUT; // optional (resize events)
 
-  int running = 1;
+    SetConsoleMode(hIn, mode);
 
-  while(running){
+    char buffer[BUFFER_SIZE_BYTES] = {};
+    int bufferSize = BUFFER_SIZE_BYTES;
+
+    int running = 1;
     INPUT_RECORD recordArray[1];
     DWORD numberOfEventsRead;
-    ReadConsoleInput(hIn, recordArray, 1, &numberOfEventsRead);
+    HANDLE stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD bytesWritten;
+    int fillBytesWritten = 0;
+    while (running)
+    {
+        ReadConsoleInput(hIn, recordArray, 1, &numberOfEventsRead);
 
-    INPUT_RECORD record = recordArray[0];
+        INPUT_RECORD record = recordArray[0];
 
-    if(record.EventType == KEY_EVENT){
-      if(record.Event.KeyEvent.wVirtualKeyCode == 'Q'){
-        running = 0;
-      }
+        if (record.EventType == KEY_EVENT)
+        {
+            if (record.Event.KeyEvent.wVirtualKeyCode == 'Q')
+            {
+                running = 0;
+            }
+        }
+
+        FillBuffer(buffer, bufferSize, fillBytesWritten);
+
+        WriteFile(stdHandle, buffer, fillBytesWritten, &bytesWritten, NULL);
     }
-  
-  }
 
-  printToStdHandle("strlen result: %d|");
-  // Try some Set Graphics Rendition (SGR) terminal escape sequences
-  // clang-format off
+    printToStdHandle("strlen result: %d|");
+    // Try some Set Graphics Rendition (SGR) terminal escape sequences
+    // clang-format off
   // WriteFile(hOut, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped)
   printToStdHandle("\x1b[31mThis text has a red foreground using SGR.31.\r\n");
   printToStdHandle("\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to ");
@@ -128,8 +156,8 @@ int main() {
   wprintf( L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts " L"to apply many colors in the same command. Note the colors are applied " L"from left to right so only the right-most option of foreground cyan " L"(SGR.36) and background bright white (SGR.107) is effective.\r\n");
   wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
   wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
-  // clang-format on
-  
-  system("pause");
-  return 0;
+    // clang-format on
+
+    system("pause");
+    return 0;
 }
