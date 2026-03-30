@@ -37,7 +37,6 @@ typedef uint64_t uint64;
 typedef float real32;
 typedef double real64;
 
-global_variable int64 GlobalPerfCountFrequency;
 #define BUFFER_SIZE_BYTES 1024
 
 internal int StrLen(const char *s)
@@ -64,26 +63,35 @@ inline LARGE_INTEGER win32GetWallClock()
     return (Result);
 }
 
-inline float win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
-{
-    float Result = ((float)(End.QuadPart - Start.QuadPart) / (float)GlobalPerfCountFrequency);
-    return (Result);
-}
 
-internal void FillBuffer(char *buffer, int bufferSize, int &bytesWritten)
+internal void FillBuffer(char *buffer,
+                         int bufferSize,
+                         int &bytesWritten,
+                         char *inputBuffer,
+                         int numberOfBytesRead,
+                         int &exit)
 {
-    for (int i = 0; i < 3; i++)
+    bytesWritten = 0;
+    int writeIndex = 0;
+
+    if (inputBuffer[0] == 'q')
     {
-        buffer[i] = 'a';
+        exit = 0;
     }
-    bytesWritten = 3;
+    if (inputBuffer[0] == '\x1b')
+        inputBuffer[0] = 0;
+
+    for (int i = 0; i < numberOfBytesRead; i++)
+    {
+        buffer[bytesWritten++] = inputBuffer[i];
+    }
 }
 
 int main()
 {
 
-    FreeConsole();
-    AllocConsole();
+    // FreeConsole();
+    // AllocConsole();
 
     // Set output mode to handle virtual terminal sequences
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -91,14 +99,15 @@ int main()
     {
         return GetLastError();
     }
-    DWORD dwMode = 0;
-    if (!GetConsoleMode(hOut, &dwMode))
+    DWORD OutMode = 0;
+    if (!GetConsoleMode(hOut, &OutMode))
     {
         return GetLastError();
     }
+    DWORD initOutMode = OutMode;
 
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    if (!SetConsoleMode(hOut, dwMode))
+    OutMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    if (!SetConsoleMode(hOut, OutMode))
     {
         return GetLastError();
     }
@@ -107,57 +116,61 @@ int main()
 
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
 
-    DWORD mode;
-    GetConsoleMode(hIn, &mode);
+    DWORD inMode;
+    GetConsoleMode(hIn, &inMode);
+    DWORD initInMode = inMode;
 
-    mode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
-    mode |= ENABLE_WINDOW_INPUT; // optional (resize events)
+    inMode &= ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+    inMode |= ENABLE_WINDOW_INPUT | ENABLE_VIRTUAL_TERMINAL_INPUT; // optional (resize events)
 
-    SetConsoleMode(hIn, mode);
+    SetConsoleMode(hIn, inMode);
 
     char buffer[BUFFER_SIZE_BYTES] = {};
     int bufferSize = BUFFER_SIZE_BYTES;
 
-    int running = 1;
-    INPUT_RECORD recordArray[1];
-    DWORD numberOfEventsRead;
+    int exit = 1;
     HANDLE stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD bytesWritten;
+    DWORD numberOfBytesRead;
+    char inputBuffer[10];
     int fillBytesWritten = 0;
-    while (running)
+    printToStdHandle("\x1b[?1000h");
+    printToStdHandle("\x1b[?1006h");
+
+    printToStdHandle("\x1b[?1049h");
+    while (exit)
     {
-        ReadConsoleInput(hIn, recordArray, 1, &numberOfEventsRead);
 
-        INPUT_RECORD record = recordArray[0];
+        ReadFile(hIn, inputBuffer, 10, &numberOfBytesRead, NULL);
 
-        if (record.EventType == KEY_EVENT)
-        {
-            if (record.Event.KeyEvent.wVirtualKeyCode == 'Q')
-            {
-                running = 0;
-            }
-        }
+        FillBuffer(buffer, bufferSize, fillBytesWritten, inputBuffer, numberOfBytesRead, exit);
 
-        FillBuffer(buffer, bufferSize, fillBytesWritten);
+        WriteFile(hOut, buffer, fillBytesWritten, NULL, NULL);
 
-        WriteFile(stdHandle, buffer, fillBytesWritten, &bytesWritten, NULL);
+        // WriteFile(stdHandle, buffer, fillBytesWritten, &bytesWritten, NULL);
     }
+    printToStdHandle("\x1b[?1049l");
 
-    printToStdHandle("strlen result: %d|");
+    printToStdHandle("\x1b[?1000l"); // disable
+    printToStdHandle("\x1b[?1006l"); // disable SGR modebytesWritten
+
+    SetConsoleMode(hOut, initOutMode);
+    SetConsoleMode(hIn, initInMode);
+
+    // printToStdHandle("strlen result: %d|");
     // Try some Set Graphics Rendition (SGR) terminal escape sequences
     // clang-format off
   // WriteFile(hOut, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped)
-  printToStdHandle("\x1b[31mThis text has a red foreground using SGR.31.\r\n");
-  printToStdHandle("\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to ");
-  printToStdHandle("affect the previous color setting.\r\n");
-  wprintf(L"\x1b[mThis text has returned to default colors using SGR.0 " L"implicitly.\r\n");
-  wprintf(L"\x1b[34;46mThis text shows the foreground and background change at " L"the same time.\r\n");
-  wprintf(L"\x1b[0mThis text has returned to default colors using SGR.0 " L"explicitly.\r\n");
-  wprintf( L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts " L"to apply many colors in the same command. Note the colors are applied " L"from left to right so only the right-most option of foreground cyan " L"(SGR.36) and background bright white (SGR.107) is effective.\r\n");
-  wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
-  wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
+  // printToStdHandle("\x1b[31mThis text has a red foreground using SGR.31.\r\n");
+  // printToStdHandle("\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to ");
+  // printToStdHandle("affect the previous color setting.\r\n");
+  // wprintf(L"\x1b[mThis text has returned to default colors using SGR.0 " L"implicitly.\r\n");
+  // wprintf(L"\x1b[34;46mThis text shows the foreground and background change at " L"the same time.\r\n");
+  // wprintf(L"\x1b[0mThis text has returned to default colors using SGR.0 " L"explicitly.\r\n");
+  // wprintf( L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts " L"to apply many colors in the same command. Note the colors are applied " L"from left to right so only the right-most option of foreground cyan " L"(SGR.36) and background bright white (SGR.107) is effective.\r\n");
+  // wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
+  // wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
     // clang-format on
 
-    system("pause");
     return 0;
 }
