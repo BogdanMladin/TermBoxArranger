@@ -1,4 +1,4 @@
 cd build
-main.exe
+Win32_BoxArranger.exe
 cd ..
 
