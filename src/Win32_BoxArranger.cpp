@@ -63,28 +63,33 @@ inline LARGE_INTEGER win32GetWallClock()
     return (Result);
 }
 
+struct game_state
+{
+    int windowWidth;
+    int windowHeight;
+    int currentLine;
+};
 
 internal void FillBuffer(char *buffer,
                          int bufferSize,
                          int &bytesWritten,
                          char *inputBuffer,
                          int numberOfBytesRead,
-                         int &exit)
+                         game_state *gameState,
+                         int &running)
 {
     bytesWritten = 0;
     int writeIndex = 0;
 
     if (inputBuffer[0] == 'q')
     {
-        exit = 0;
+        running = 0;
     }
-    if (inputBuffer[0] == '\x1b')
-        inputBuffer[0] = 0;
-
-    for (int i = 0; i < numberOfBytesRead; i++)
+    if (inputBuffer[0] == 'j')
     {
-        buffer[bytesWritten++] = inputBuffer[i];
+        gameState->currentLine++;
     }
+    
 }
 
 int main()
@@ -128,28 +133,72 @@ int main()
     char buffer[BUFFER_SIZE_BYTES] = {};
     int bufferSize = BUFFER_SIZE_BYTES;
 
-    int exit = 1;
+    int running = 1;
     HANDLE stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD bytesWritten;
     DWORD numberOfBytesRead;
-    char inputBuffer[10];
+    DWORD screenNumberOfBytesRead;
+    char inputBuffer[20];
+    char screenSizeBuffer[20];
     int fillBytesWritten = 0;
-    printToStdHandle("\x1b[?1000h");
-    printToStdHandle("\x1b[?1006h");
+    game_state gameState = {};
+    
+    printToStdHandle("\x1b[?1000h");  // Get mouse input
+    printToStdHandle("\x1b[?1006h");  // Get mouse input
 
-    printToStdHandle("\x1b[?1049h");
-    while (exit)
+    printToStdHandle("\x1b[?1049h");  // Switch to alternate buffer
+    while (running)
     {
+        ReadFile(hIn, inputBuffer, 20, &numberOfBytesRead, NULL);
 
-        ReadFile(hIn, inputBuffer, 10, &numberOfBytesRead, NULL);
+        printToStdHandle("\x1b[18t");
+        ReadFile(hIn, screenSizeBuffer, 20, &screenNumberOfBytesRead, NULL);
+        if(screenSizeBuffer[0] == '\x1b' && screenSizeBuffer[1] == '[' && screenSizeBuffer[2] == '8' && screenSizeBuffer[3] == ';'){
+            int i = 4;
+            int heightSize = 0;
+            int widthSize = 0;
+            int windowWidth = 0;
+            int windowHeight = 0;
+            while(screenSizeBuffer[i] != ';'){
+                heightSize++;
+                i++;
+            }
+            i++;
+            while(screenSizeBuffer[i] != 't'){
+                widthSize++;
+                i++;
+            }
 
-        FillBuffer(buffer, bufferSize, fillBytesWritten, inputBuffer, numberOfBytesRead, exit);
+            i = 4;
+            
+            while(screenSizeBuffer[i] != ';'){
+                int pow = 1;
+                for(int i = 0; i < heightSize-1; i++){
+                    pow *= 10;
+                }
+                windowHeight += pow * (screenSizeBuffer[i] - '0');
+                heightSize--;
+                i++;
+            }
+            i++;
+            while(screenSizeBuffer[i] != 't'){
+                int pow = 1;
+                for(int i = 0; i < widthSize-1; i++){
+                    pow *= 10;
+                }
+                windowWidth += pow * (screenSizeBuffer[i] - '0');
+                widthSize--;
+                i++;
+            }
+            gameState.windowWidth = windowWidth;
+            gameState.windowHeight = windowHeight;
+        }
+
+        FillBuffer(buffer, bufferSize, fillBytesWritten, inputBuffer, numberOfBytesRead, &gameState, running);
 
         WriteFile(hOut, buffer, fillBytesWritten, NULL, NULL);
-
-        // WriteFile(stdHandle, buffer, fillBytesWritten, &bytesWritten, NULL);
     }
-    printToStdHandle("\x1b[?1049l");
+    printToStdHandle("\x1b[?1049l"); // Switch back to main buffer
 
     printToStdHandle("\x1b[?1000l"); // disable
     printToStdHandle("\x1b[?1006l"); // disable SGR modebytesWritten
