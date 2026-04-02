@@ -1,5 +1,6 @@
 
 // clang-format off
+#include <cassert>
 #include <windows.h>
 #include <consoleapi3.h>
 #include <wincontypes.h>
@@ -63,6 +64,13 @@ inline LARGE_INTEGER win32GetWallClock()
     return (Result);
 }
 
+struct output_buffer
+{
+    int bufferSize;
+    int bytesWritten;
+    char *buffer;
+};
+
 struct game_state
 {
     int windowWidth;
@@ -70,16 +78,31 @@ struct game_state
     int currentLine;
 };
 
-internal void FillBuffer(char *buffer,
-                         int bufferSize,
-                         int &bytesWritten,
+internal void BufWrite(output_buffer *outputBuffer, const char *s, int bytesToWrite)
+{
+    if (outputBuffer->bytesWritten + bytesToWrite <= outputBuffer->bufferSize)
+    {
+        for (int i = 0; i < bytesToWrite; i++)
+        {
+            outputBuffer->buffer[outputBuffer->bytesWritten] = s[i];
+            outputBuffer->bytesWritten++;
+        }
+    }
+    else
+    {
+        assert(1 == 0);
+    }
+}
+
+internal void FillBuffer(output_buffer *outputBuffer,
                          char *inputBuffer,
                          int numberOfBytesRead,
                          game_state *gameState,
                          int &running)
 {
-    bytesWritten = 0;
+    outputBuffer->bytesWritten = 0;
     int writeIndex = 0;
+    BufWrite(outputBuffer, "\x1b[3J\x1b[2J\x1b[H", 11); // Clear screen and move cursor to top left
 
     if (inputBuffer[0] == 'q')
     {
@@ -89,7 +112,19 @@ internal void FillBuffer(char *buffer,
     {
         gameState->currentLine++;
     }
-    
+    if (inputBuffer[0] == 'k')
+    {
+        gameState->currentLine--;
+    }
+
+    for (int i = 0; i < gameState->currentLine; i++)
+    {
+        BufWrite(outputBuffer, "\x1b[1B", 4);
+    }
+    for (int i = 0; i < gameState->windowWidth; i++)
+    {
+        BufWrite(outputBuffer, "a", 1);
+    }
 }
 
 int main()
@@ -132,6 +167,9 @@ int main()
 
     char buffer[BUFFER_SIZE_BYTES] = {};
     int bufferSize = BUFFER_SIZE_BYTES;
+    output_buffer outputBuffer = {};
+    outputBuffer.buffer = buffer;
+    outputBuffer.bufferSize = bufferSize;
 
     int running = 1;
     HANDLE stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -142,38 +180,44 @@ int main()
     char screenSizeBuffer[20];
     int fillBytesWritten = 0;
     game_state gameState = {};
-    
-    printToStdHandle("\x1b[?1000h");  // Get mouse input
-    printToStdHandle("\x1b[?1006h");  // Get mouse input
 
-    printToStdHandle("\x1b[?1049h");  // Switch to alternate buffer
+    printToStdHandle("\x1b[?1000h"); // Get mouse input
+    printToStdHandle("\x1b[?1006h"); // Get mouse input
+
+    printToStdHandle("\x1b[?1049h"); // Switch to alternate buffer
     while (running)
     {
         ReadFile(hIn, inputBuffer, 20, &numberOfBytesRead, NULL);
 
         printToStdHandle("\x1b[18t");
         ReadFile(hIn, screenSizeBuffer, 20, &screenNumberOfBytesRead, NULL);
-        if(screenSizeBuffer[0] == '\x1b' && screenSizeBuffer[1] == '[' && screenSizeBuffer[2] == '8' && screenSizeBuffer[3] == ';'){
+        if (screenSizeBuffer[0] == '\x1b' && screenSizeBuffer[1] == '[' &&
+            screenSizeBuffer[2] == '8' && screenSizeBuffer[3] == ';')
+        {
             int i = 4;
             int heightSize = 0;
             int widthSize = 0;
             int windowWidth = 0;
             int windowHeight = 0;
-            while(screenSizeBuffer[i] != ';'){
+            while (screenSizeBuffer[i] != ';')
+            {
                 heightSize++;
                 i++;
             }
             i++;
-            while(screenSizeBuffer[i] != 't'){
+            while (screenSizeBuffer[i] != 't')
+            {
                 widthSize++;
                 i++;
             }
 
             i = 4;
-            
-            while(screenSizeBuffer[i] != ';'){
+
+            while (screenSizeBuffer[i] != ';')
+            {
                 int pow = 1;
-                for(int i = 0; i < heightSize-1; i++){
+                for (int i = 0; i < heightSize - 1; i++)
+                {
                     pow *= 10;
                 }
                 windowHeight += pow * (screenSizeBuffer[i] - '0');
@@ -181,9 +225,11 @@ int main()
                 i++;
             }
             i++;
-            while(screenSizeBuffer[i] != 't'){
+            while (screenSizeBuffer[i] != 't')
+            {
                 int pow = 1;
-                for(int i = 0; i < widthSize-1; i++){
+                for (int i = 0; i < widthSize - 1; i++)
+                {
                     pow *= 10;
                 }
                 windowWidth += pow * (screenSizeBuffer[i] - '0');
@@ -194,9 +240,9 @@ int main()
             gameState.windowHeight = windowHeight;
         }
 
-        FillBuffer(buffer, bufferSize, fillBytesWritten, inputBuffer, numberOfBytesRead, &gameState, running);
+        FillBuffer(&outputBuffer, inputBuffer, numberOfBytesRead, &gameState, running);
 
-        WriteFile(hOut, buffer, fillBytesWritten, NULL, NULL);
+        WriteFile(hOut, outputBuffer.buffer, outputBuffer.bytesWritten, NULL, NULL);
     }
     printToStdHandle("\x1b[?1049l"); // Switch back to main buffer
 
