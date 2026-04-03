@@ -1,6 +1,7 @@
 
 // clang-format off
 #include <cassert>
+#include <urlmon.h>
 #include <windows.h>
 #include <consoleapi3.h>
 #include <wincontypes.h>
@@ -16,6 +17,8 @@
 #include <winuser.h>
 #include <stdio.h>
 #include <stdint.h>
+
+#include <math.h>
 // clang-format on
 
 #define internal static
@@ -38,11 +41,11 @@ typedef uint64_t uint64;
 typedef float real32;
 typedef double real64;
 
-#define BUFFER_SIZE_BYTES 1024
+#define BUFFER_SIZE_BYTES 4048
 
-internal int StrLen(const char *s)
+internal int32 StrLen(const char *s)
 {
-    int result = 0;
+    int32 result = 0;
     while (*s)
     {
         result++;
@@ -66,23 +69,59 @@ inline LARGE_INTEGER win32GetWallClock()
 
 struct output_buffer
 {
-    int bufferSize;
-    int bytesWritten;
+    int32 windowWidth;
+    int32 windowHeight;
+    int32 bufferSize;
+    int32 bytesWritten;
     char *buffer;
 };
 
 struct game_state
 {
-    int windowWidth;
-    int windowHeight;
-    int currentLine;
+    int32 currentLine;
+    int32 squareRadius;
+    real32 rotationOffset;
 };
 
-internal void BufWrite(output_buffer *outputBuffer, const char *s, int bytesToWrite)
+struct point
+{
+    real32 x;
+    real32 y;
+};
+struct line
+{
+    real32 m;
+    real32 b;
+    int32 isVertical;
+};
+
+struct square
+{
+    union {
+        point points[4];
+        struct
+        {
+            point ul;
+            point ur;
+            point ll;
+            point lr;
+        };
+    };
+};
+
+inline internal int32 RoundReal32ToInt32(real32 Real32)
+{
+    // int32 result = (int32)lrintf(Real32); //this uses intrinsic
+    int32 Result = 0;
+    Result = (int32)(Real32 + 0.5f);
+    return Result;
+}
+
+internal void BufWrite(output_buffer *outputBuffer, const char *s, int32 bytesToWrite)
 {
     if (outputBuffer->bytesWritten + bytesToWrite <= outputBuffer->bufferSize)
     {
-        for (int i = 0; i < bytesToWrite; i++)
+        for (int32 i = 0; i < bytesToWrite; i++)
         {
             outputBuffer->buffer[outputBuffer->bytesWritten] = s[i];
             outputBuffer->bytesWritten++;
@@ -90,19 +129,136 @@ internal void BufWrite(output_buffer *outputBuffer, const char *s, int bytesToWr
     }
     else
     {
-        assert(1 == 0);
+        assert(false);
+    }
+}
+internal inline int32 CharLenPozInt32(int32 integer)
+{
+    if (integer == 0)
+        return 1;
+
+    int32 result = 0;
+
+    while (integer > 0)
+    {
+        integer /= 10;
+        result++;
+    }
+    return result;
+}
+
+internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
+{
+    char s[20] = {'\x1b', '['};
+    int32 sBytes = 2;
+    int32 roundX = RoundReal32ToInt32(x);
+    int32 roundY = RoundReal32ToInt32(y);
+
+    if (roundY >= 0 && roundY <= OB->windowHeight)
+    {
+        int32 yLen = CharLenPozInt32(roundY);
+        for (int i = 0; i < yLen; i++)
+        {
+            s[sBytes + yLen - i - 1] = roundY % 10 + '0';
+            roundY /= 10;
+        }
+        sBytes += yLen;
+    }
+
+    s[sBytes] = ';';
+    sBytes++;
+
+    if (roundX >= 0 && roundX <= OB->windowWidth)
+    {
+        int32 xLen = CharLenPozInt32(roundX);
+        for (int i = 0; i < xLen; i++)
+        {
+            s[sBytes + xLen - i - 1] = roundX % 10 + '0';
+            roundX /= 10;
+        }
+        sBytes += xLen;
+    }
+
+    s[sBytes] = 'H';
+    sBytes++;
+
+    s[sBytes] = ' ';
+    sBytes++;
+
+    BufWrite(OB, s, sBytes);
+}
+
+internal line LineFromPoints(point pointA, point pointB)
+{
+    // TODO(bogdan): Address case where line is vertical (pointB.x = pointA.x)
+    line result = {};
+    if (pointB.x == pointA.x)
+    {
+        result.isVertical = 1;
+        result.b = pointA.x;
+        return result;
+    }
+    result.m = (pointB.y - pointA.y) / (pointB.x - pointA.x);
+
+    result.b = pointA.y - (result.m * pointA.x);
+    return result;
+}
+internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
+{
+    line line = LineFromPoints(pointA, pointB);
+    if (line.isVertical)
+    {
+        int32 roundAY = RoundReal32ToInt32(pointA.y);
+        int32 roundBY = RoundReal32ToInt32(pointB.y);
+        int32 roundX = RoundReal32ToInt32(pointA.x);
+
+        if (roundAY > roundBY)
+        {
+            int32 aux = roundAY;
+            roundAY = roundBY;
+            roundBY = aux;
+        }
+
+        for(int i = roundAY; i <= roundBY; i++){
+            BufDrawPoint(OB , roundX, i);
+        }
+    }
+    else{
+        int32 roundAY = RoundReal32ToInt32(pointA.y);
+        int32 roundBY = RoundReal32ToInt32(pointB.y);
+        int32 roundAX = RoundReal32ToInt32(pointA.x);
+        int32 roundBX = RoundReal32ToInt32(pointB.x);
+
+        int32 granularity = abs(roundAX - roundBX) + abs(roundAY - roundBY);
+
+        real32 distance = pointA.x - pointB.x;
+        real32 step = distance /(real32)granularity;
+
+        real32 currentX = pointA.x;
+        for(int i = 0; i< granularity; i++){
+            real32 currentY = line.m*currentX + line.b;
+            BufDrawPoint(OB, currentX , currentY);
+            currentX -= step;
+            
+        }
+        
+        
     }
 }
 
 internal void FillBuffer(output_buffer *outputBuffer,
                          char *inputBuffer,
-                         int numberOfBytesRead,
+                         int32 numberOfBytesRead,
                          game_state *gameState,
-                         int &running)
+                         int32 &running)
 {
     outputBuffer->bytesWritten = 0;
-    int writeIndex = 0;
-    BufWrite(outputBuffer, "\x1b[3J\x1b[2J\x1b[H", 11); // Clear screen and move cursor to top left
+    int32 writeIndex = 0;
+    BufWrite(outputBuffer,
+             "\x1b[0m\x1b[3J\x1b[2J\x1b[H",
+             15); // Clear screen, attributes, and move cursor to top left
+
+    BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
 
     if (inputBuffer[0] == 'q')
     {
@@ -110,24 +266,57 @@ internal void FillBuffer(output_buffer *outputBuffer,
     }
     if (inputBuffer[0] == 'j')
     {
-        gameState->currentLine++;
+        gameState->rotationOffset += Pi32 / 38.0f;
     }
-    if (inputBuffer[0] == 'k')
+    if(inputBuffer[0] == 'k'){
+        gameState->rotationOffset -= Pi32 / 38.0f;
+    }
+    if (inputBuffer[0] == 'l')
     {
-        gameState->currentLine--;
+        gameState->squareRadius++;
+    }
+    if (inputBuffer[0] == 'h')
+    {
+        gameState->squareRadius--;
     }
 
-    for (int i = 0; i < gameState->currentLine; i++)
+    // point p1;
+    // p1.x = 2;
+    // p1.y = 2;
+    // point p2;
+    // p2.x = 3;
+    // p2.y = 5;
+    // BufDrawLine(outputBuffer , p1 , p2);
+
+    real32 midX = (real32)outputBuffer->windowWidth / 2.0f;
+    real32 midY = (real32)outputBuffer->windowHeight / 2.0f;
+    // BufDrawPoint(outputBuffer, midX, midY);
+
+    square square;
+    real32 pointOffset = gameState->rotationOffset;
+    real32 squareRadius = gameState->squareRadius;
+    for (int i = 0; i < 4; i++)
     {
-        BufWrite(outputBuffer, "\x1b[1B", 4);
+        square.points[i].x = midX + (cosf(pointOffset) * squareRadius * 2.0f);
+        square.points[i].y = midY + (sinf(pointOffset) * squareRadius);
+        pointOffset += Pi32 / 2.0f;
     }
-    for (int i = 0; i < gameState->windowWidth; i++)
+
+    for (int i = 0; i < 4; i++)
     {
-        BufWrite(outputBuffer, "a", 1);
+        point pointA = square.points[i];
+        point pointB = square.points[(i + 1) % 4];
+
+        BufDrawLine(outputBuffer, pointA, pointB);
+    }
+
+    for (int i = 0; i < 4; i++)
+    {
+        BufDrawPoint(outputBuffer, square.points[i].x, square.points[i].y);
     }
 }
 
-int main()
+int32 main()
 {
 
     // FreeConsole();
@@ -166,25 +355,27 @@ int main()
     SetConsoleMode(hIn, inMode);
 
     char buffer[BUFFER_SIZE_BYTES] = {};
-    int bufferSize = BUFFER_SIZE_BYTES;
+    int32 bufferSize = BUFFER_SIZE_BYTES;
     output_buffer outputBuffer = {};
     outputBuffer.buffer = buffer;
     outputBuffer.bufferSize = bufferSize;
 
-    int running = 1;
+    int32 running = 1;
     HANDLE stdHandle = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD bytesWritten;
     DWORD numberOfBytesRead;
     DWORD screenNumberOfBytesRead;
     char inputBuffer[20];
     char screenSizeBuffer[20];
-    int fillBytesWritten = 0;
+    int32 fillBytesWritten = 0;
     game_state gameState = {};
+    gameState.squareRadius = 8;
 
     printToStdHandle("\x1b[?1000h"); // Get mouse input
     printToStdHandle("\x1b[?1006h"); // Get mouse input
 
     printToStdHandle("\x1b[?1049h"); // Switch to alternate buffer
+    printToStdHandle("\x1b[?25l");   // Hide the cursor. ESC[?25h to unhide
     while (running)
     {
         ReadFile(hIn, inputBuffer, 20, &numberOfBytesRead, NULL);
@@ -194,11 +385,11 @@ int main()
         if (screenSizeBuffer[0] == '\x1b' && screenSizeBuffer[1] == '[' &&
             screenSizeBuffer[2] == '8' && screenSizeBuffer[3] == ';')
         {
-            int i = 4;
-            int heightSize = 0;
-            int widthSize = 0;
-            int windowWidth = 0;
-            int windowHeight = 0;
+            int32 i = 4;
+            int32 heightSize = 0;
+            int32 widthSize = 0;
+            int32 windowWidth = 0;
+            int32 windowHeight = 0;
             while (screenSizeBuffer[i] != ';')
             {
                 heightSize++;
@@ -215,8 +406,8 @@ int main()
 
             while (screenSizeBuffer[i] != ';')
             {
-                int pow = 1;
-                for (int i = 0; i < heightSize - 1; i++)
+                int32 pow = 1;
+                for (int32 i = 0; i < heightSize - 1; i++)
                 {
                     pow *= 10;
                 }
@@ -227,8 +418,8 @@ int main()
             i++;
             while (screenSizeBuffer[i] != 't')
             {
-                int pow = 1;
-                for (int i = 0; i < widthSize - 1; i++)
+                int32 pow = 1;
+                for (int32 i = 0; i < widthSize - 1; i++)
                 {
                     pow *= 10;
                 }
@@ -236,8 +427,8 @@ int main()
                 widthSize--;
                 i++;
             }
-            gameState.windowWidth = windowWidth;
-            gameState.windowHeight = windowHeight;
+            outputBuffer.windowWidth = windowWidth;
+            outputBuffer.windowHeight = windowHeight;
         }
 
         FillBuffer(&outputBuffer, inputBuffer, numberOfBytesRead, &gameState, running);
