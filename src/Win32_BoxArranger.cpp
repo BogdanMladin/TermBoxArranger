@@ -76,11 +76,22 @@ struct output_buffer
     char *buffer;
 };
 
+struct box
+{
+    real32 length;
+    real32 width;
+    real32 height;
+};
+
 struct game_state
 {
     int32 currentLine;
     int32 squareRadius;
     real32 rotationOffset;
+
+    box boxes[12];
+    int32 boxCount;
+    int32 maxBoxCount = 12;
 };
 
 struct point
@@ -132,7 +143,10 @@ internal void BufWrite(output_buffer *outputBuffer, const char *s, int32 bytesTo
         assert(false);
     }
 }
-internal inline int32 CharLenPozInt32(int32 integer)
+
+// Calculates the number of characters needed to represent the pozitive integer, equivalent to
+// calculating the number of digits
+internal inline int32 CharLenUInt32(uint32 integer)
 {
     if (integer == 0)
         return 1;
@@ -147,7 +161,19 @@ internal inline int32 CharLenPozInt32(int32 integer)
     return result;
 }
 
-internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
+internal void BufWriteUInt32(output_buffer *OB, uint32 uint)
+{
+    int32 charLen = CharLenUInt32(uint);
+    assert(OB->bytesWritten + charLen <= OB->bufferSize);
+    for (int i = 0; i < charLen; i++)
+    {
+        OB->buffer[OB->bytesWritten + charLen - i - 1] = uint % 10 + '0';
+        uint /= 10;
+    }
+    OB->bytesWritten += charLen;
+}
+
+internal void BufSetPos(output_buffer *OB, real32 x, real32 y)
 {
     char s[20] = {'\x1b', '['};
     int32 sBytes = 2;
@@ -156,7 +182,7 @@ internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
 
     if (roundY >= 0 && roundY <= OB->windowHeight)
     {
-        int32 yLen = CharLenPozInt32(roundY);
+        int32 yLen = CharLenUInt32(roundY);
         for (int i = 0; i < yLen; i++)
         {
             s[sBytes + yLen - i - 1] = roundY % 10 + '0';
@@ -170,7 +196,7 @@ internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
 
     if (roundX >= 0 && roundX <= OB->windowWidth)
     {
-        int32 xLen = CharLenPozInt32(roundX);
+        int32 xLen = CharLenUInt32(roundX);
         for (int i = 0; i < xLen; i++)
         {
             s[sBytes + xLen - i - 1] = roundX % 10 + '0';
@@ -182,10 +208,13 @@ internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
     s[sBytes] = 'H';
     sBytes++;
 
-    s[sBytes] = ' ';
-    sBytes++;
-
     BufWrite(OB, s, sBytes);
+}
+
+internal void BufDrawPoint(output_buffer *OB, real32 x, real32 y)
+{
+    BufSetPos(OB, x, y);
+    BufWrite(OB, " ", 1);
 }
 
 internal line LineFromPoints(point pointA, point pointB)
@@ -219,11 +248,13 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
             roundBY = aux;
         }
 
-        for(int i = roundAY; i <= roundBY; i++){
-            BufDrawPoint(OB , roundX, i);
+        for (int i = roundAY; i <= roundBY; i++)
+        {
+            BufDrawPoint(OB, roundX, i);
         }
     }
-    else{
+    else
+    {
         int32 roundAY = RoundReal32ToInt32(pointA.y);
         int32 roundBY = RoundReal32ToInt32(pointB.y);
         int32 roundAX = RoundReal32ToInt32(pointA.x);
@@ -232,17 +263,15 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
         int32 granularity = abs(roundAX - roundBX) + abs(roundAY - roundBY);
 
         real32 distance = pointA.x - pointB.x;
-        real32 step = distance /(real32)granularity;
+        real32 step = distance / (real32)granularity;
 
         real32 currentX = pointA.x;
-        for(int i = 0; i< granularity; i++){
-            real32 currentY = line.m*currentX + line.b;
-            BufDrawPoint(OB, currentX , currentY);
+        for (int i = 0; i < granularity; i++)
+        {
+            real32 currentY = line.m * currentX + line.b;
+            BufDrawPoint(OB, currentX, currentY);
             currentX -= step;
-            
         }
-        
-        
     }
 }
 
@@ -264,21 +293,26 @@ internal void FillBuffer(output_buffer *outputBuffer,
     {
         running = 0;
     }
-    if (inputBuffer[0] == 'j')
-    {
-        gameState->rotationOffset += Pi32 / 38.0f;
-    }
-    if(inputBuffer[0] == 'k'){
-        gameState->rotationOffset -= Pi32 / 38.0f;
-    }
-    if (inputBuffer[0] == 'l')
-    {
-        gameState->squareRadius++;
-    }
-    if (inputBuffer[0] == 'h')
-    {
-        gameState->squareRadius--;
-    }
+
+    // INPUT_SQUARE:
+    // if (inputBuffer[0] == 'j')
+    // {
+    //     gameState->rotationOffset += Pi32 / 38.0f;
+    // }
+    // if (inputBuffer[0] == 'k')
+    // {
+    //     gameState->rotationOffset -= Pi32 / 38.0f;
+    // }
+    // if (inputBuffer[0] == 'l')
+    // {
+    //     gameState->squareRadius++;
+    // }
+    // if (inputBuffer[0] == 'h')
+    // {
+    //     gameState->squareRadius--;
+    // }
+
+    // RENDER_SQUARE:
 
     // point p1;
     // p1.x = 2;
@@ -288,31 +322,46 @@ internal void FillBuffer(output_buffer *outputBuffer,
     // p2.y = 5;
     // BufDrawLine(outputBuffer , p1 , p2);
 
-    real32 midX = (real32)outputBuffer->windowWidth / 2.0f;
-    real32 midY = (real32)outputBuffer->windowHeight / 2.0f;
-    // BufDrawPoint(outputBuffer, midX, midY);
+    // real32 midX = (real32)outputBuffer->windowWidth / 2.0f;
+    // real32 midY = (real32)outputBuffer->windowHeight / 2.0f;
+    // // BufDrawPoint(outputBuffer, midX, midY);
 
-    square square;
-    real32 pointOffset = gameState->rotationOffset;
-    real32 squareRadius = gameState->squareRadius;
-    for (int i = 0; i < 4; i++)
+    // square square;
+    // real32 pointOffset = gameState->rotationOffset;
+    // real32 squareRadius = gameState->squareRadius;
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     square.points[i].x = midX + (cosf(pointOffset) * squareRadius * 2.0f);
+    //     square.points[i].y = midY + (sinf(pointOffset) * squareRadius);
+    //     pointOffset += Pi32 / 2.0f;
+    // }
+
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     point pointA = square.points[i];
+    //     point pointB = square.points[(i + 1) % 4];
+
+    //     BufDrawLine(outputBuffer, pointA, pointB);
+    // }
+
+    // for (int i = 0; i < 4; i++)
+    // {
+    //     BufDrawPoint(outputBuffer, square.points[i].x, square.points[i].y);
+    // }
+
+    // ACTUAL_APP:
+    
+    // Render Current list
+    int32 listX = 2;
+    int32 listY = 2;
+
+    for (int i = 0; i < gameState->boxCount; i++)
     {
-        square.points[i].x = midX + (cosf(pointOffset) * squareRadius * 2.0f);
-        square.points[i].y = midY + (sinf(pointOffset) * squareRadius);
-        pointOffset += Pi32 / 2.0f;
-    }
-
-    for (int i = 0; i < 4; i++)
-    {
-        point pointA = square.points[i];
-        point pointB = square.points[(i + 1) % 4];
-
-        BufDrawLine(outputBuffer, pointA, pointB);
-    }
-
-    for (int i = 0; i < 4; i++)
-    {
-        BufDrawPoint(outputBuffer, square.points[i].x, square.points[i].y);
+        // Print box line
+        BufSetPos(outputBuffer, listX, listY + i);
+        BufWrite(outputBuffer, "Box ", 4);
+        BufWriteUInt32(outputBuffer, i);
+        BufWrite(outputBuffer, ": put sizes here", 16);
     }
 }
 
@@ -370,6 +419,20 @@ int32 main()
     int32 fillBytesWritten = 0;
     game_state gameState = {};
     gameState.squareRadius = 8;
+
+    gameState.boxes[0].length = 1;
+    gameState.boxes[0].width = 2;
+    gameState.boxes[0].height = 3;
+
+    gameState.boxes[1].length = 4;
+    gameState.boxes[1].width = 5;
+    gameState.boxes[1].height = 6;
+
+    gameState.boxes[2].length = 7;
+    gameState.boxes[2].width = 8;
+    gameState.boxes[2].height = 9;
+
+    gameState.boxCount = 3;
 
     printToStdHandle("\x1b[?1000h"); // Get mouse input
     printToStdHandle("\x1b[?1006h"); // Get mouse input
@@ -442,21 +505,6 @@ int32 main()
 
     SetConsoleMode(hOut, initOutMode);
     SetConsoleMode(hIn, initInMode);
-
-    // printToStdHandle("strlen result: %d|");
-    // Try some Set Graphics Rendition (SGR) terminal escape sequences
-    // clang-format off
-  // WriteFile(hOut, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped)
-  // printToStdHandle("\x1b[31mThis text has a red foreground using SGR.31.\r\n");
-  // printToStdHandle("\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to ");
-  // printToStdHandle("affect the previous color setting.\r\n");
-  // wprintf(L"\x1b[mThis text has returned to default colors using SGR.0 " L"implicitly.\r\n");
-  // wprintf(L"\x1b[34;46mThis text shows the foreground and background change at " L"the same time.\r\n");
-  // wprintf(L"\x1b[0mThis text has returned to default colors using SGR.0 " L"explicitly.\r\n");
-  // wprintf( L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts " L"to apply many colors in the same command. Note the colors are applied " L"from left to right so only the right-most option of foreground cyan " L"(SGR.36) and background bright white (SGR.107) is effective.\r\n");
-  // wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
-  // wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
-    // clang-format on
 
     return 0;
 }
