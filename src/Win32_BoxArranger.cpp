@@ -85,7 +85,9 @@ struct box
 
 struct game_state
 {
-    int32 currentLine;
+    int32 selectedListLine;
+    int32 selectedNewItemDimension;
+
     int32 squareRadius;
     real32 rotationOffset;
 
@@ -99,6 +101,7 @@ struct point
     real32 x;
     real32 y;
 };
+
 struct line
 {
     real32 m;
@@ -130,6 +133,27 @@ inline internal int32 RoundReal32ToInt32(real32 Real32)
 
 internal void BufWrite(output_buffer *outputBuffer, const char *s, int32 bytesToWrite)
 {
+    if (outputBuffer->bytesWritten + bytesToWrite <= outputBuffer->bufferSize)
+    {
+        for (int32 i = 0; i < bytesToWrite; i++)
+        {
+            outputBuffer->buffer[outputBuffer->bytesWritten] = s[i];
+            outputBuffer->bytesWritten++;
+        }
+    }
+    else
+    {
+        assert(false);
+    }
+}
+internal void BufWriteHighlightGreen(output_buffer *outputBuffer, const char *s, int32 bytesToWrite)
+{
+    if (outputBuffer->bytesWritten + 5 <= outputBuffer->bufferSize)
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    else
+        assert(false);
+    outputBuffer->bytesWritten += 5;
+
     if (outputBuffer->bytesWritten + bytesToWrite <= outputBuffer->bufferSize)
     {
         for (int32 i = 0; i < bytesToWrite; i++)
@@ -278,7 +302,7 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
 internal void FillBuffer(output_buffer *outputBuffer,
                          char *inputBuffer,
                          int32 numberOfBytesRead,
-                         game_state *gameState,
+                         game_state *GS,
                          int32 &running)
 {
     outputBuffer->bytesWritten = 0;
@@ -287,82 +311,109 @@ internal void FillBuffer(output_buffer *outputBuffer,
              "\x1b[0m\x1b[3J\x1b[2J\x1b[H",
              15); // Clear screen, attributes, and move cursor to top left
 
-    BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-
     if (inputBuffer[0] == 'q')
     {
         running = 0;
     }
 
-    // INPUT_SQUARE:
-    // if (inputBuffer[0] == 'j')
-    // {
-    //     gameState->rotationOffset += Pi32 / 38.0f;
-    // }
-    // if (inputBuffer[0] == 'k')
-    // {
-    //     gameState->rotationOffset -= Pi32 / 38.0f;
-    // }
-    // if (inputBuffer[0] == 'l')
-    // {
-    //     gameState->squareRadius++;
-    // }
-    // if (inputBuffer[0] == 'h')
-    // {
-    //     gameState->squareRadius--;
-    // }
+    if (inputBuffer[0] == 'j')
+    {
 
-    // RENDER_SQUARE:
+        if (GS->selectedListLine > -1)
+        {
+            if (GS->selectedListLine < GS->boxCount - 1)
+            { // -1 because start form 0
+                GS->selectedListLine++;
+            }
+            else if (GS->selectedListLine == GS->boxCount - 1)
+            {
+                GS->selectedListLine = -1;
+                GS->selectedNewItemDimension = 0;
+            };
+        }
+        else if (GS->selectedNewItemDimension > -1)
+        {
+            if (GS->selectedNewItemDimension < 2)
+            {
+                GS->selectedNewItemDimension++;
+            }
+        }
+    }
 
-    // point p1;
-    // p1.x = 2;
-    // p1.y = 2;
-    // point p2;
-    // p2.x = 3;
-    // p2.y = 5;
-    // BufDrawLine(outputBuffer , p1 , p2);
-
-    // real32 midX = (real32)outputBuffer->windowWidth / 2.0f;
-    // real32 midY = (real32)outputBuffer->windowHeight / 2.0f;
-    // // BufDrawPoint(outputBuffer, midX, midY);
-
-    // square square;
-    // real32 pointOffset = gameState->rotationOffset;
-    // real32 squareRadius = gameState->squareRadius;
-    // for (int i = 0; i < 4; i++)
-    // {
-    //     square.points[i].x = midX + (cosf(pointOffset) * squareRadius * 2.0f);
-    //     square.points[i].y = midY + (sinf(pointOffset) * squareRadius);
-    //     pointOffset += Pi32 / 2.0f;
-    // }
-
-    // for (int i = 0; i < 4; i++)
-    // {
-    //     point pointA = square.points[i];
-    //     point pointB = square.points[(i + 1) % 4];
-
-    //     BufDrawLine(outputBuffer, pointA, pointB);
-    // }
-
-    // for (int i = 0; i < 4; i++)
-    // {
-    //     BufDrawPoint(outputBuffer, square.points[i].x, square.points[i].y);
-    // }
+    if (inputBuffer[0] == 'k')
+    {
+        if (GS->selectedListLine > -1)
+        {
+            if(GS->selectedListLine > 0){
+                GS->selectedListLine--;
+            }
+        }
+        else if (GS->selectedNewItemDimension > -1)
+        {
+            if(GS->selectedNewItemDimension > 0){
+                GS->selectedNewItemDimension--;
+            }
+            else if(GS->selectedNewItemDimension == 0){
+                GS->selectedNewItemDimension = -1;
+                GS->selectedListLine = GS->boxCount - 1;
+            }
+        }
+    }
 
     // ACTUAL_APP:
-    
-    // Render Current list
-    int32 listX = 2;
-    int32 listY = 2;
 
-    for (int i = 0; i < gameState->boxCount; i++)
+    // Render Current list
+    int32 baseX = 2;
+    int32 baseY = 2;
+    int32 currentLine = 0;
+
+    for (int i = 0; i < GS->boxCount; i++)
     {
+        if (currentLine == GS->selectedListLine)
+        {
+            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+        }
         // Print box line
-        BufSetPos(outputBuffer, listX, listY + i);
+        BufSetPos(outputBuffer, baseX, baseY + i);
         BufWrite(outputBuffer, "Box ", 4);
         BufWriteUInt32(outputBuffer, i);
         BufWrite(outputBuffer, ": put sizes here", 16);
+
+        if (currentLine == GS->selectedListLine)
+        {
+            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+        }
+
+        currentLine++;
     }
+
+    // Render new item box
+
+    BufSetPos(outputBuffer, baseX, baseY + GS->boxCount);
+
+    if (GS->selectedNewItemDimension >= 0)
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    BufWrite(outputBuffer, "New box: ", 9);
+    if (GS->selectedNewItemDimension >= 0)
+        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+
+    if (GS->selectedNewItemDimension == 0)
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    BufWrite(outputBuffer, "L: ", 3);
+    if (GS->selectedNewItemDimension == 0)
+        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+
+    if (GS->selectedNewItemDimension == 1)
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    BufWrite(outputBuffer, "W: ", 3);
+    if (GS->selectedNewItemDimension == 1)
+        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+
+    if (GS->selectedNewItemDimension == 2)
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    BufWrite(outputBuffer, "H: ", 3);
+    if (GS->selectedNewItemDimension == 2)
+        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
 }
 
 int32 main()
@@ -417,8 +468,11 @@ int32 main()
     char inputBuffer[20];
     char screenSizeBuffer[20];
     int32 fillBytesWritten = 0;
+
     game_state gameState = {};
     gameState.squareRadius = 8;
+    gameState.selectedListLine = 0;
+    gameState.selectedNewItemDimension = -1;
 
     gameState.boxes[0].length = 1;
     gameState.boxes[0].width = 2;
