@@ -78,15 +78,22 @@ struct output_buffer
 
 struct box
 {
-    real32 length;
-    real32 width;
-    real32 height;
+    union {
+        struct
+        {
+            real32 length;
+            real32 width;
+            real32 height;
+        };
+        real32 dimensions[3];
+    };
 };
 
 struct game_state
 {
     int32 selectedListLine;
     int32 selectedNewItemDimension;
+    int32 selectedDimension;
 
     int32 squareRadius;
     real32 rotationOffset;
@@ -146,6 +153,7 @@ internal void BufWrite(output_buffer *outputBuffer, const char *s, int32 bytesTo
         assert(false);
     }
 }
+
 internal void BufWriteHighlightGreen(output_buffer *outputBuffer, const char *s, int32 bytesToWrite)
 {
     if (outputBuffer->bytesWritten + 5 <= outputBuffer->bufferSize)
@@ -344,19 +352,62 @@ internal void FillBuffer(output_buffer *outputBuffer,
     {
         if (GS->selectedListLine > -1)
         {
-            if(GS->selectedListLine > 0){
+            if (GS->selectedListLine > 0)
+            {
                 GS->selectedListLine--;
             }
         }
         else if (GS->selectedNewItemDimension > -1)
         {
-            if(GS->selectedNewItemDimension > 0){
+            if (GS->selectedNewItemDimension > 0)
+            {
                 GS->selectedNewItemDimension--;
             }
-            else if(GS->selectedNewItemDimension == 0){
+            else if (GS->selectedNewItemDimension == 0)
+            {
                 GS->selectedNewItemDimension = -1;
                 GS->selectedListLine = GS->boxCount - 1;
             }
+        }
+    }
+
+    if (inputBuffer[0] == 'l')
+    {
+        if (GS->selectedDimension < 2)
+        {
+            GS->selectedDimension++;
+        }
+    }
+
+    if (inputBuffer[0] == 'h')
+    {
+        if (GS->selectedDimension > 0)
+        {
+            GS->selectedDimension--;
+        }
+    }
+
+    if (inputBuffer[0] >= '0' && inputBuffer[0] <= '9')
+    {
+        int32 intInput = inputBuffer[0] - '0';
+        box *selectedBox = &GS->boxes[GS->selectedListLine];
+
+        if (GS->selectedDimension >= 0)
+        {
+            real32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
+            *dimension *= 10;
+            *dimension += intInput;
+        }
+    }
+
+    if (inputBuffer[0] == 127)
+    {
+        box *selectedBox = &GS->boxes[GS->selectedListLine];
+
+        if (GS->selectedDimension >= 0)
+        {
+            real32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
+            *dimension /= 10;
         }
     }
 
@@ -365,31 +416,80 @@ internal void FillBuffer(output_buffer *outputBuffer,
     // Render Current list
     int32 baseX = 2;
     int32 baseY = 2;
-    int32 currentLine = 0;
 
     for (int i = 0; i < GS->boxCount; i++)
     {
-        if (currentLine == GS->selectedListLine)
-        {
+        if (i == GS->selectedListLine)
             BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-        }
+
         // Print box line
         BufSetPos(outputBuffer, baseX, baseY + i);
         BufWrite(outputBuffer, "Box ", 4);
         BufWriteUInt32(outputBuffer, i);
-        BufWrite(outputBuffer, ": put sizes here", 16);
+        BufWrite(outputBuffer, ":", 1);
 
-        if (currentLine == GS->selectedListLine)
-        {
+        if (i == GS->selectedListLine)
             BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-        }
 
-        currentLine++;
+        BufWrite(outputBuffer, " ", 1);
+
+        if (GS->selectedDimension == 0 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+        BufWrite(outputBuffer, "L", 1);
+
+        BufWriteUInt32(outputBuffer, GS->boxes[i].length);
+
+        if (GS->selectedDimension == 0 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+
+        BufWrite(outputBuffer, " ", 1);
+
+        if (GS->selectedDimension == 1 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+
+        BufWrite(outputBuffer, "W", 1);
+        BufWriteUInt32(outputBuffer, GS->boxes[i].width);
+
+        if (GS->selectedDimension == 1 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+
+        BufWrite(outputBuffer, " ", 1);
+
+        if (GS->selectedDimension == 2 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+
+        BufWrite(outputBuffer, "H", 1);
+        BufWriteUInt32(outputBuffer, GS->boxes[i].height);
+
+        if (GS->selectedDimension == 2 && i == GS->selectedListLine)
+            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
     }
 
-    // Render new item box
+    if (GS->selectedNewItemDimension > -1)
+    {
+        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+    }
 
+    // Print box line
     BufSetPos(outputBuffer, baseX, baseY + GS->boxCount);
+    BufWrite(outputBuffer, "New Box:", 8);
+
+    if (GS->selectedNewItemDimension > -1)
+    {
+        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+    }
+
+    int32 newBoxIndex = GS->boxCount;
+    BufWrite(outputBuffer, " L", 3);
+    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].length);
+    BufWrite(outputBuffer, " W", 2);
+    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].width);
+    BufWrite(outputBuffer, " H", 2);
+    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].height);
+
+#if 0
+    // Render new item box
+    BufSetPos(outputBuffer, baseX + 7, baseY + GS->selectedListLine);
 
     if (GS->selectedNewItemDimension >= 0)
         BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
@@ -414,6 +514,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
     BufWrite(outputBuffer, "H: ", 3);
     if (GS->selectedNewItemDimension == 2)
         BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+#endif
 }
 
 int32 main()
