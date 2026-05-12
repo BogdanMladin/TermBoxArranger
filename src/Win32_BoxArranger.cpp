@@ -81,11 +81,11 @@ struct box
     union {
         struct
         {
-            real32 length;
-            real32 width;
-            real32 height;
+            int32 length;
+            int32 width;
+            int32 height;
         };
-        real32 dimensions[3];
+        int32 dimensions[3];
     };
 };
 
@@ -329,11 +329,11 @@ internal void FillBuffer(output_buffer *outputBuffer,
 
         if (GS->selectedListLine > -1)
         {
-            if (GS->selectedListLine < GS->boxCount - 1)
+            if (GS->selectedListLine < GS->boxCount)
             { // -1 because start form 0
                 GS->selectedListLine++;
             }
-            else if (GS->selectedListLine == GS->boxCount - 1)
+            else if (GS->selectedListLine == GS->boxCount)
             {
                 GS->selectedListLine = -1;
                 GS->selectedNewItemDimension = 0;
@@ -366,7 +366,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
             else if (GS->selectedNewItemDimension == 0)
             {
                 GS->selectedNewItemDimension = -1;
-                GS->selectedListLine = GS->boxCount - 1;
+                GS->selectedListLine = GS->boxCount;
             }
         }
     }
@@ -394,7 +394,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
 
         if (GS->selectedDimension >= 0)
         {
-            real32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
+            int32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
             *dimension *= 10;
             *dimension += intInput;
         }
@@ -406,9 +406,16 @@ internal void FillBuffer(output_buffer *outputBuffer,
 
         if (GS->selectedDimension >= 0)
         {
-            real32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
+            int32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
             *dimension /= 10;
         }
+    }
+
+    // because it starts from 0 this is +1 actually
+    if (GS->boxes[GS->boxCount].height || GS->boxes[GS->boxCount].length ||
+        GS->boxes[GS->boxCount].width)
+    {
+        GS->boxCount++;
     }
 
     // ACTUAL_APP:
@@ -417,7 +424,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
     int32 baseX = 2;
     int32 baseY = 2;
 
-    for (int i = 0; i < GS->boxCount; i++)
+    for (int i = 0; i < GS->boxCount + 1; i++)
     {
         if (i == GS->selectedListLine)
             BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
@@ -470,6 +477,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
         BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
     }
 
+#if 0
     // Print box line
     BufSetPos(outputBuffer, baseX, baseY + GS->boxCount);
     BufWrite(outputBuffer, "New Box:", 8);
@@ -486,6 +494,7 @@ internal void FillBuffer(output_buffer *outputBuffer,
     BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].width);
     BufWrite(outputBuffer, " H", 2);
     BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].height);
+#endif
 
 #if 0
     // Render new item box
