@@ -307,17 +307,14 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
     }
 }
 
-internal void FillBuffer(output_buffer *outputBuffer,
-                         char *inputBuffer,
-                         int32 numberOfBytesRead,
-                         game_state *GS,
-                         int32 &running)
+internal void FillBuffer(
+    output_buffer *OB, char *inputBuffer, int32 numberOfBytesRead, game_state *GS, int32 &running)
 {
-    outputBuffer->bytesWritten = 0;
+    OB->bytesWritten = 0;
     int32 writeIndex = 0;
-    BufWrite(outputBuffer,
-             "\x1b[0m\x1b[3J\x1b[2J\x1b[H",
-             15); // Clear screen, attributes, and move cursor to top left
+
+    // Clear screen, attributes, and move cursor to top left
+    BufWrite(OB, "\x1b[0m\x1b[3J\x1b[2J\x1b[H", 15);
 
     if (inputBuffer[0] == 'q')
     {
@@ -426,104 +423,61 @@ internal void FillBuffer(output_buffer *outputBuffer,
 
     for (int i = 0; i < GS->boxCount + 1; i++)
     {
-        if (i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-
         // Print box line
-        BufSetPos(outputBuffer, baseX, baseY + i);
-        BufWrite(outputBuffer, "Box ", 4);
-        BufWriteUInt32(outputBuffer, i);
-        BufWrite(outputBuffer, ":", 1);
+        BufSetPos(OB, baseX, baseY + i);
+        BufWrite(OB, "Box ", 4);
+        BufWriteUInt32(OB, i);
+        BufWrite(OB, ":", 1);
 
-        if (i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+        BufWrite(OB, " ", 1);
 
-        BufWrite(outputBuffer, " ", 1);
+        BufWrite(OB, "L", 1);
+        BufWriteUInt32(OB, GS->boxes[i].length);
 
-        if (GS->selectedDimension == 0 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-        BufWrite(outputBuffer, "L", 1);
+        BufWrite(OB, " ", 1);
 
-        BufWriteUInt32(outputBuffer, GS->boxes[i].length);
+        BufWrite(OB, "W", 1);
+        BufWriteUInt32(OB, GS->boxes[i].width);
 
-        if (GS->selectedDimension == 0 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+        BufWrite(OB, " ", 1);
 
-        BufWrite(outputBuffer, " ", 1);
-
-        if (GS->selectedDimension == 1 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-
-        BufWrite(outputBuffer, "W", 1);
-        BufWriteUInt32(outputBuffer, GS->boxes[i].width);
-
-        if (GS->selectedDimension == 1 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-
-        BufWrite(outputBuffer, " ", 1);
-
-        if (GS->selectedDimension == 2 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-
-        BufWrite(outputBuffer, "H", 1);
-        BufWriteUInt32(outputBuffer, GS->boxes[i].height);
-
-        if (GS->selectedDimension == 2 && i == GS->selectedListLine)
-            BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+        BufWrite(OB, "H", 1);
+        BufWriteUInt32(OB, GS->boxes[i].height);
     }
 
-    if (GS->selectedNewItemDimension > -1)
+    // Render Highlights
+
+    BufWrite(OB, "\x1b[42m", 5); // Set background color to green
+
+    BufSetPos(OB, baseX, baseY + GS->selectedListLine);
+    BufWrite(OB, "Box ", 4);
+    BufWriteUInt32(OB, GS->selectedListLine);
+    BufWrite(OB, ":", 1);
+    int32 newX = baseX;
+    newX += 4 + CharLenUInt32(GS->selectedListLine) + 2;
+    for (int i = 0; i < GS->selectedDimension; i++)
     {
-        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
+        newX += 2;
+        newX += CharLenUInt32(GS->boxes[GS->selectedListLine].dimensions[i]);
     }
-
-#if 0
-    // Print box line
-    BufSetPos(outputBuffer, baseX, baseY + GS->boxCount);
-    BufWrite(outputBuffer, "New Box:", 8);
-
-    if (GS->selectedNewItemDimension > -1)
+    BufSetPos(OB, newX, baseY + GS->selectedListLine);
+    switch (GS->selectedDimension)
     {
-        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
+    case 0:
+        BufWrite(OB, "L", 1);
+        break;
+    case 1:
+        BufWrite(OB, "W", 1);
+        break;
+    case 2:
+        BufWrite(OB, "H", 1);
+        break;
     }
 
-    int32 newBoxIndex = GS->boxCount;
-    BufWrite(outputBuffer, " L", 3);
-    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].length);
-    BufWrite(outputBuffer, " W", 2);
-    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].width);
-    BufWrite(outputBuffer, " H", 2);
-    BufWriteUInt32(outputBuffer, GS->boxes[newBoxIndex].height);
-#endif
+    // Selected dimension number
+    BufWriteUInt32(OB, GS->boxes[GS->selectedListLine].dimensions[GS->selectedDimension]);
 
-#if 0
-    // Render new item box
-    BufSetPos(outputBuffer, baseX + 7, baseY + GS->selectedListLine);
-
-    if (GS->selectedNewItemDimension >= 0)
-        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-    BufWrite(outputBuffer, "New box: ", 9);
-    if (GS->selectedNewItemDimension >= 0)
-        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-
-    if (GS->selectedNewItemDimension == 0)
-        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-    BufWrite(outputBuffer, "L: ", 3);
-    if (GS->selectedNewItemDimension == 0)
-        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-
-    if (GS->selectedNewItemDimension == 1)
-        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-    BufWrite(outputBuffer, "W: ", 3);
-    if (GS->selectedNewItemDimension == 1)
-        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-
-    if (GS->selectedNewItemDimension == 2)
-        BufWrite(outputBuffer, "\x1b[42m", 5); // Set background color to green
-    BufWrite(outputBuffer, "H: ", 3);
-    if (GS->selectedNewItemDimension == 2)
-        BufWrite(outputBuffer, "\x1b[0m", 4); // Set text atributes to default
-#endif
+    BufWrite(OB, "\x1b[0m", 4); // Set text atributes to default
 }
 
 int32 main()
