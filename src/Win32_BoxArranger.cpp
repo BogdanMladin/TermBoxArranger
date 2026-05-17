@@ -1,8 +1,9 @@
 
 // clang-format off
-#include <cassert>
-#include <urlmon.h>
 #include <windows.h>
+#include <cassert>
+#include <handleapi.h>
+#include <urlmon.h>
 #include <consoleapi3.h>
 #include <wincontypes.h>
 #include <sysinfoapi.h>
@@ -14,6 +15,7 @@
 #include <fileapi.h>
 #include <consoleapi2.h>
 #include <consoleapi.h>
+#include <winnt.h>
 #include <winuser.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -92,7 +94,6 @@ struct box
 struct game_state
 {
     int32 selectedListLine;
-    int32 selectedNewItemDimension;
     int32 selectedDimension;
 
     int32 squareRadius;
@@ -323,24 +324,11 @@ internal void FillBuffer(
 
     if (inputBuffer[0] == 'j')
     {
-
         if (GS->selectedListLine > -1)
         {
             if (GS->selectedListLine < GS->boxCount)
             { // -1 because start form 0
                 GS->selectedListLine++;
-            }
-            else if (GS->selectedListLine == GS->boxCount)
-            {
-                GS->selectedListLine = -1;
-                GS->selectedNewItemDimension = 0;
-            };
-        }
-        else if (GS->selectedNewItemDimension > -1)
-        {
-            if (GS->selectedNewItemDimension < 2)
-            {
-                GS->selectedNewItemDimension++;
             }
         }
     }
@@ -352,18 +340,6 @@ internal void FillBuffer(
             if (GS->selectedListLine > 0)
             {
                 GS->selectedListLine--;
-            }
-        }
-        else if (GS->selectedNewItemDimension > -1)
-        {
-            if (GS->selectedNewItemDimension > 0)
-            {
-                GS->selectedNewItemDimension--;
-            }
-            else if (GS->selectedNewItemDimension == 0)
-            {
-                GS->selectedNewItemDimension = -1;
-                GS->selectedListLine = GS->boxCount;
             }
         }
     }
@@ -536,7 +512,6 @@ int32 main()
     game_state gameState = {};
     gameState.squareRadius = 8;
     gameState.selectedListLine = 0;
-    gameState.selectedNewItemDimension = -1;
 
     gameState.boxes[0].length = 1;
     gameState.boxes[0].width = 2;
@@ -551,6 +526,17 @@ int32 main()
     gameState.boxes[2].height = 9;
 
     gameState.boxCount = 3;
+
+    HANDLE fileHandle1 = CreateFile("C:/Users/bogda/_BogdanLocal/RandomCpp2/hello.txt",
+                                    GENERIC_READ,
+                                    FILE_SHARE_READ,
+                                    0,
+                                    OPEN_ALWAYS,
+                                    0,
+                                    0);
+    DWORD nobw1;
+    ReadFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
+    CloseHandle(fileHandle1);
 
     printToStdHandle("\x1b[?1000h"); // Get mouse input
     printToStdHandle("\x1b[?1006h"); // Get mouse input
@@ -623,6 +609,17 @@ int32 main()
 
     SetConsoleMode(hOut, initOutMode);
     SetConsoleMode(hIn, initInMode);
+
+    HANDLE fileHandle = CreateFile("C:/Users/bogda/_BogdanLocal/RandomCpp2/hello.txt",
+                                   GENERIC_WRITE,
+                                   FILE_SHARE_READ,
+                                   0,
+                                   OPEN_ALWAYS,
+                                   0,
+                                   0);
+    DWORD nobw;
+    WriteFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
+    CloseHandle(fileHandle1);
 
     return 0;
 }
