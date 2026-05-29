@@ -1,6 +1,8 @@
 
 // clang-format off
 #include <windows.h>
+#include <libloaderapi.h>
+#include <string.h>
 #include <cassert>
 #include <handleapi.h>
 #include <urlmon.h>
@@ -45,6 +47,9 @@ typedef double real64;
 
 #define BUFFER_SIZE_BYTES 4048
 
+#define SET_BACKGROUND_GREEN "\x1b[42m"
+#define SET_DEFAULT_ATTRIBUTES "\x1b[0m"
+
 internal int32 StrLen(const char *s)
 {
     int32 result = 0;
@@ -68,6 +73,12 @@ inline LARGE_INTEGER win32GetWallClock()
     QueryPerformanceCounter(&Result);
     return (Result);
 }
+
+struct path_buffer
+{
+    char buffer[MAX_PATH];
+    char *onePastLastSlash;
+};
 
 struct output_buffer
 {
@@ -265,6 +276,7 @@ internal line LineFromPoints(point pointA, point pointB)
     result.b = pointA.y - (result.m * pointA.x);
     return result;
 }
+
 internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
 {
     line line = LineFromPoints(pointA, pointB);
@@ -306,6 +318,30 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
             currentX -= step;
         }
     }
+}
+
+internal void GetExePath(path_buffer *dest)
+{
+    GetModuleFileName(0, dest->buffer, sizeof(dest->buffer));
+    for (char *scan = dest->buffer; *scan; ++scan)
+    {
+        if (*scan == '\\')
+        {
+            dest->onePastLastSlash = scan + 1;
+        }
+    }
+}
+
+internal void CreateFullPath(path_buffer *basePath, char *appended)
+{
+    char *a = basePath->onePastLastSlash;
+    for (char *scan = appended; *scan; scan++)
+    {
+        *a = *scan;
+        a++;
+    }
+
+    *a = 0;
 }
 
 internal void FillBuffer(
@@ -423,7 +459,9 @@ internal void FillBuffer(
 
     // Render Highlights
 
-    BufWrite(OB, "\x1b[42m", 5); // Set background color to green
+    BufWrite(OB,
+             SET_BACKGROUND_GREEN,
+             sizeof(SET_BACKGROUND_GREEN)); // Set background color to green
 
     BufSetPos(OB, baseX, baseY + GS->selectedListLine);
     BufWrite(OB, "Box ", 4);
@@ -453,7 +491,9 @@ internal void FillBuffer(
     // Selected dimension number
     BufWriteUInt32(OB, GS->boxes[GS->selectedListLine].dimensions[GS->selectedDimension]);
 
-    BufWrite(OB, "\x1b[0m", 4); // Set text atributes to default
+    BufWrite(OB,
+             SET_DEFAULT_ATTRIBUTES,
+             sizeof(SET_DEFAULT_ATTRIBUTES)); // Set text atributes to default
 }
 
 int32 main()
@@ -527,13 +567,13 @@ int32 main()
 
     gameState.boxCount = 3;
 
-    HANDLE fileHandle1 = CreateFile("C:/Users/bogda/_BogdanLocal/RandomCpp2/hello.txt",
-                                    GENERIC_READ,
-                                    FILE_SHARE_READ,
-                                    0,
-                                    OPEN_ALWAYS,
-                                    0,
-                                    0);
+    path_buffer basePath = {};
+    GetExePath(&basePath);
+    CreateFullPath(&basePath, "hello.txt");
+
+    HANDLE fileHandle1 =
+        CreateFile(basePath.buffer, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_ALWAYS, 0, 0);
+
     DWORD nobw1;
     ReadFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
     CloseHandle(fileHandle1);
@@ -610,13 +650,8 @@ int32 main()
     SetConsoleMode(hOut, initOutMode);
     SetConsoleMode(hIn, initInMode);
 
-    HANDLE fileHandle = CreateFile("C:/Users/bogda/_BogdanLocal/RandomCpp2/hello.txt",
-                                   GENERIC_WRITE,
-                                   FILE_SHARE_READ,
-                                   0,
-                                   OPEN_ALWAYS,
-                                   0,
-                                   0);
+    HANDLE fileHandle =
+        CreateFile(basePath.buffer, GENERIC_WRITE, FILE_SHARE_READ, 0, OPEN_ALWAYS, 0, 0);
     DWORD nobw;
     WriteFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
     CloseHandle(fileHandle1);
