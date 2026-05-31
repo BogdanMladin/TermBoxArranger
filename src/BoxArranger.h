@@ -37,17 +37,14 @@ struct output_buffer
     char *buffer;
 };
 
-struct box
-{
-    union {
-        struct
-        {
-            int32 length;
-            int32 width;
-            int32 height;
-        };
-        int32 dimensions[3];
+union box {
+    struct
+    {
+        int32 length;
+        int32 width;
+        int32 height;
     };
+    int32 dimensions[3];
 };
 
 struct game_state

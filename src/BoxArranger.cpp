@@ -191,7 +191,7 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
 }
 
 internal void FillBuffer(
-    output_buffer *OB, char *inputBuffer, int32 numberOfBytesRead, game_state *GS, int32 &running)
+    output_buffer *OB, char *inputBuffer, int32 numberOfBytesRead, game_state *GS, int32 *running)
 {
     OB->bytesWritten = 0;
     int32 writeIndex = 0;
@@ -201,7 +201,7 @@ internal void FillBuffer(
 
     if (inputBuffer[0] == 'q')
     {
-        running = 0;
+        *running = 0;
     }
 
     if (inputBuffer[0] == 'j')

@@ -21,6 +21,9 @@
 #include <stdio.h>
 // clang-format on
 
+// TODO: Switch big structures to memory rather than stack
+//       and create data structure for boxes
+
 #include "BoxArranger.cpp"
 
 struct path_buffer
@@ -65,6 +68,55 @@ internal void CreateFullPath(path_buffer *basePath, char *appended)
     }
 
     *a = 0;
+}
+
+internal void ExtractWindowDimensions(char *screenSizeBuffer, output_buffer *outputBuffer)
+{
+
+    int32 i = 4;
+    int32 heightSize = 0;
+    int32 widthSize = 0;
+    int32 windowWidth = 0;
+    int32 windowHeight = 0;
+    while (screenSizeBuffer[i] != ';')
+    {
+        heightSize++;
+        i++;
+    }
+    i++;
+    while (screenSizeBuffer[i] != 't')
+    {
+        widthSize++;
+        i++;
+    }
+
+    i = 4;
+
+    while (screenSizeBuffer[i] != ';')
+    {
+        int32 pow = 1;
+        for (int32 i = 0; i < heightSize - 1; i++)
+        {
+            pow *= 10;
+        }
+        windowHeight += pow * (screenSizeBuffer[i] - '0');
+        heightSize--;
+        i++;
+    }
+    i++;
+    while (screenSizeBuffer[i] != 't')
+    {
+        int32 pow = 1;
+        for (int32 i = 0; i < widthSize - 1; i++)
+        {
+            pow *= 10;
+        }
+        windowWidth += pow * (screenSizeBuffer[i] - '0');
+        widthSize--;
+        i++;
+    }
+    outputBuffer->windowWidth = windowWidth;
+    outputBuffer->windowHeight = windowHeight;
 }
 
 int32 main()
@@ -163,53 +215,10 @@ int32 main()
         if (screenSizeBuffer[0] == '\x1b' && screenSizeBuffer[1] == '[' &&
             screenSizeBuffer[2] == '8' && screenSizeBuffer[3] == ';')
         {
-            int32 i = 4;
-            int32 heightSize = 0;
-            int32 widthSize = 0;
-            int32 windowWidth = 0;
-            int32 windowHeight = 0;
-            while (screenSizeBuffer[i] != ';')
-            {
-                heightSize++;
-                i++;
-            }
-            i++;
-            while (screenSizeBuffer[i] != 't')
-            {
-                widthSize++;
-                i++;
-            }
-
-            i = 4;
-
-            while (screenSizeBuffer[i] != ';')
-            {
-                int32 pow = 1;
-                for (int32 i = 0; i < heightSize - 1; i++)
-                {
-                    pow *= 10;
-                }
-                windowHeight += pow * (screenSizeBuffer[i] - '0');
-                heightSize--;
-                i++;
-            }
-            i++;
-            while (screenSizeBuffer[i] != 't')
-            {
-                int32 pow = 1;
-                for (int32 i = 0; i < widthSize - 1; i++)
-                {
-                    pow *= 10;
-                }
-                windowWidth += pow * (screenSizeBuffer[i] - '0');
-                widthSize--;
-                i++;
-            }
-            outputBuffer.windowWidth = windowWidth;
-            outputBuffer.windowHeight = windowHeight;
+            ExtractWindowDimensions(screenSizeBuffer, &outputBuffer);
         }
 
-        FillBuffer(&outputBuffer, inputBuffer, numberOfBytesRead, &gameState, running);
+        FillBuffer(&outputBuffer, inputBuffer, numberOfBytesRead, &gameState, &running);
 
         WriteFile(hOut, outputBuffer.buffer, outputBuffer.bytesWritten, NULL, NULL);
     }
