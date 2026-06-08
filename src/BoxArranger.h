@@ -37,14 +37,18 @@ struct output_buffer
     char *buffer;
 };
 
-union box {
-    struct
-    {
-        int32 length;
-        int32 width;
-        int32 height;
+struct box
+{
+    union {
+        struct
+        {
+            int32 length;
+            int32 width;
+            int32 height;
+        };
+        int32 dimensions[3];
     };
-    int32 dimensions[3];
+    box* next;
 };
 
 struct game_state
@@ -52,10 +56,8 @@ struct game_state
     int32 selectedListLine;
     int32 selectedDimension;
 
-    int32 squareRadius;
-    real32 rotationOffset;
-
     box boxes[12];
+    box *boxHead;
     int32 boxCount;
     int32 maxBoxCount = 12;
 };

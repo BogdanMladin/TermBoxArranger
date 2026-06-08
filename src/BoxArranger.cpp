@@ -190,6 +190,21 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
     }
 }
 
+// Returns a pointer to the box at index index
+// Expects that the index is not larger than the number
+// of boxes in the list
+internal box *GetBoxAtIndex(box *head, int32 index)
+{
+    box *result = head;
+    while (index)
+    {
+        assert(result->next); // If this fires index is out of bounds
+        result = result->next;
+        index--;
+    }
+    return result;
+}
+
 internal void FillBuffer(
     output_buffer *OB, char *inputBuffer, int32 numberOfBytesRead, game_state *GS, int32 *running)
 {
@@ -266,12 +281,14 @@ internal void FillBuffer(
         }
     }
 
+#if 0
     // because it starts from 0 this is +1 actually
     if (GS->boxes[GS->boxCount].height || GS->boxes[GS->boxCount].length ||
         GS->boxes[GS->boxCount].width)
     {
         GS->boxCount++;
     }
+#endif
 
     // ACTUAL_APP:
 
@@ -279,7 +296,10 @@ internal void FillBuffer(
     int32 baseX = 2;
     int32 baseY = 2;
 
-    for (int i = 0; i < GS->boxCount + 1; i++)
+    box *inext = GS->boxHead;
+    int32 i = 0;
+
+    while (inext)
     {
         // Print box line
         BufSetPos(OB, baseX, baseY + i);
@@ -290,17 +310,20 @@ internal void FillBuffer(
         BufWrite(OB, " ", 1);
 
         BufWrite(OB, "L", 1);
-        BufWriteUInt32(OB, GS->boxes[i].length);
+        BufWriteUInt32(OB, inext->length);
 
         BufWrite(OB, " ", 1);
 
         BufWrite(OB, "W", 1);
-        BufWriteUInt32(OB, GS->boxes[i].width);
+        BufWriteUInt32(OB, inext->width);
 
         BufWrite(OB, " ", 1);
 
         BufWrite(OB, "H", 1);
-        BufWriteUInt32(OB, GS->boxes[i].height);
+        BufWriteUInt32(OB, inext->height);
+
+        inext = inext->next;
+        i++;
     }
 
     // Render Highlights
@@ -308,6 +331,8 @@ internal void FillBuffer(
     BufWrite(OB,
              SET_BACKGROUND_GREEN,
              sizeof(SET_BACKGROUND_GREEN)); // Set background color to green
+
+    box *selectedBox = GetBoxAtIndex(GS->boxHead, GS->selectedListLine);
 
     BufSetPos(OB, baseX, baseY + GS->selectedListLine);
     BufWrite(OB, "Box ", 4);
@@ -318,7 +343,7 @@ internal void FillBuffer(
     for (int i = 0; i < GS->selectedDimension; i++)
     {
         newX += 2;
-        newX += CharLenUInt32(GS->boxes[GS->selectedListLine].dimensions[i]);
+        newX += CharLenUInt32(selectedBox->dimensions[i]);
     }
     BufSetPos(OB, newX, baseY + GS->selectedListLine);
     switch (GS->selectedDimension)
@@ -335,7 +360,7 @@ internal void FillBuffer(
     }
 
     // Selected dimension number
-    BufWriteUInt32(OB, GS->boxes[GS->selectedListLine].dimensions[GS->selectedDimension]);
+    BufWriteUInt32(OB, selectedBox->dimensions[GS->selectedDimension]);
 
     BufWrite(OB,
              SET_DEFAULT_ATTRIBUTES,

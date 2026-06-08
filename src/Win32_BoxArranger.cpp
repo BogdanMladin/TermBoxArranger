@@ -1,6 +1,8 @@
 
 // clang-format off
 #include <windows.h>
+#include <cassert>
+#include <heapapi.h>
 #include <libloaderapi.h>
 #include <string.h>
 #include <handleapi.h>
@@ -31,6 +33,38 @@ struct path_buffer
     char buffer[MAX_PATH];
     char *onePastLastSlash;
 };
+
+internal box *InitBoxLL(int32 length, int32 width, int32 height)
+{
+    HANDLE heapHandle = GetProcessHeap();
+    box *result = (box *)HeapAlloc(heapHandle, HEAP_ZERO_MEMORY, sizeof(box));
+
+    assert(result);
+
+    result->length = 1;
+    result->width = 2;
+    result->height = 3;
+    return result;
+}
+
+internal void BoxLLAddBox(box *head, int32 length, int32 width, int32 height)
+{
+
+    HANDLE heapHandle = GetProcessHeap();
+    box *newBox = (box *)HeapAlloc(heapHandle, HEAP_ZERO_MEMORY, sizeof(box));
+    assert(newBox);
+    newBox->length = length;
+    newBox->width = width;
+    newBox->height = height;
+
+    box *temp = head;
+    while (temp->next)
+    {
+        temp = temp->next;
+    }
+
+    temp->next = newBox;
+}
 
 internal void printToStdHandle(const char *s)
 {
@@ -173,23 +207,26 @@ int32 main()
     int32 fillBytesWritten = 0;
 
     game_state gameState = {};
-    gameState.squareRadius = 8;
-    gameState.selectedListLine = 0;
 
-    gameState.boxes[0].length = 1;
-    gameState.boxes[0].width = 2;
-    gameState.boxes[0].height = 3;
+    gameState.boxHead = InitBoxLL(1, 2, 3);
+    BoxLLAddBox(gameState.boxHead, 4, 5, 6);
+    BoxLLAddBox(gameState.boxHead, 7, 8, 9);
 
-    gameState.boxes[1].length = 4;
-    gameState.boxes[1].width = 5;
-    gameState.boxes[1].height = 6;
+    // gameState.boxes[0].length = 1;
+    // gameState.boxes[0].width = 2;
+    // gameState.boxes[0].height = 3;
 
-    gameState.boxes[2].length = 7;
-    gameState.boxes[2].width = 8;
-    gameState.boxes[2].height = 9;
+    // gameState.boxes[1].length = 4;
+    // gameState.boxes[1].width = 5;
+    // gameState.boxes[1].height = 6;
+
+    // gameState.boxes[2].length = 7;
+    // gameState.boxes[2].width = 8;
+    // gameState.boxes[2].height = 9;
 
     gameState.boxCount = 3;
 
+#if 0
     path_buffer basePath = {};
     GetExePath(&basePath);
     CreateFullPath(&basePath, "hello.txt");
@@ -200,6 +237,7 @@ int32 main()
     DWORD nobw1;
     ReadFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
     CloseHandle(fileHandle1);
+#endif
 
     printToStdHandle("\x1b[?1000h"); // Get mouse input
     printToStdHandle("\x1b[?1006h"); // Get mouse input
@@ -230,11 +268,13 @@ int32 main()
     SetConsoleMode(hOut, initOutMode);
     SetConsoleMode(hIn, initInMode);
 
+#if 0
     HANDLE fileHandle =
         CreateFile(basePath.buffer, GENERIC_WRITE, FILE_SHARE_READ, 0, OPEN_ALWAYS, 0, 0);
     DWORD nobw;
     WriteFile(fileHandle1, &gameState, sizeof(game_state), &nobw1, 0);
     CloseHandle(fileHandle1);
+#endif
 
     return 0;
 }
