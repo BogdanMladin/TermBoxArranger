@@ -190,6 +190,32 @@ internal void BufDrawLine(output_buffer *OB, point pointA, point pointB)
     }
 }
 
+// Writes to the output buffer a line of the following format:
+// Box boxNumber: Llength Wwidth Hheight
+// Eg: Box 1: L2 W3 H4
+internal void BufPrintBoxLine(
+    output_buffer *OB, int32 boxNumber, int32 length, int32 width, int32 height)
+{
+    BufWrite(OB, "Box ", 4);
+    BufWriteUInt32(OB, boxNumber);
+    BufWrite(OB, ":", 1);
+
+    BufWrite(OB, " ", 1);
+
+    BufWrite(OB, "L", 1);
+    BufWriteUInt32(OB, length);
+
+    BufWrite(OB, " ", 1);
+
+    BufWrite(OB, "W", 1);
+    BufWriteUInt32(OB, width);
+
+    BufWrite(OB, " ", 1);
+
+    BufWrite(OB, "H", 1);
+    BufWriteUInt32(OB, height);
+}
+
 // Returns a pointer to the box at index index
 // Expects that the index is not larger than the number
 // of boxes in the list
@@ -227,6 +253,11 @@ internal void FillBuffer(
             { // -1 because start form 0
                 GS->selectedListLine++;
             }
+            if (GS->selectedListLine == GS->boxCount)
+            {
+                GS->selectedListLine = -1;
+                GS->selectedNewBox = 1;
+            }
         }
     }
 
@@ -238,6 +269,11 @@ internal void FillBuffer(
             {
                 GS->selectedListLine--;
             }
+        }
+        if (GS->selectedNewBox)
+        {
+            GS->selectedNewBox = false;
+            GS->selectedListLine = GS->boxCount - 1;
         }
     }
 
@@ -260,13 +296,19 @@ internal void FillBuffer(
     if (inputBuffer[0] >= '0' && inputBuffer[0] <= '9')
     {
         int32 intInput = inputBuffer[0] - '0';
-        box *selectedBox = &GS->boxes[GS->selectedListLine];
-
-        if (GS->selectedDimension >= 0)
+        box *selectedBox;
+        if (GS->selectedListLine > -1)
         {
-            int32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
-            *dimension *= 10;
-            *dimension += intInput;
+            selectedBox = GetBoxAtIndex(GS->boxHead, GS->selectedListLine);
+            if (GS->selectedDimension >= 0)
+            {
+                int32 *dimension = &selectedBox->dimensions[GS->selectedDimension];
+                *dimension *= 10;
+                *dimension += intInput;
+            }
+        }
+        else if (GS->selectedNewBox){
+            // TODO: create new box funciton here
         }
     }
 
@@ -303,49 +345,49 @@ internal void FillBuffer(
     {
         // Print box line
         BufSetPos(OB, baseX, baseY + i);
-        BufWrite(OB, "Box ", 4);
-        BufWriteUInt32(OB, i);
-        BufWrite(OB, ":", 1);
-
-        BufWrite(OB, " ", 1);
-
-        BufWrite(OB, "L", 1);
-        BufWriteUInt32(OB, inext->length);
-
-        BufWrite(OB, " ", 1);
-
-        BufWrite(OB, "W", 1);
-        BufWriteUInt32(OB, inext->width);
-
-        BufWrite(OB, " ", 1);
-
-        BufWrite(OB, "H", 1);
-        BufWriteUInt32(OB, inext->height);
+        BufPrintBoxLine(OB, i, inext->length, inext->width, inext->height);
 
         inext = inext->next;
         i++;
     }
+    // Print new box line
+    BufSetPos(OB, baseX, baseY + i);
+    BufPrintBoxLine(OB, i, 0, 0, 0);
 
     // Render Highlights
 
     BufWrite(OB,
              SET_BACKGROUND_GREEN,
              sizeof(SET_BACKGROUND_GREEN)); // Set background color to green
+    //  TODO: This seems like not the way this should be done
+    int32 *selectedDimensions;
+    int32 emptyArray[3] = {0, 0, 0};
+    int32 selectedLine;
 
-    box *selectedBox = GetBoxAtIndex(GS->boxHead, GS->selectedListLine);
+    if (GS->selectedListLine > -1)
+    {
+        box *selectedBox = GetBoxAtIndex(GS->boxHead, GS->selectedListLine);
+        selectedDimensions = selectedBox->dimensions;
+        selectedLine = GS->selectedListLine;
+    }
+    else if (GS->selectedNewBox)
+    {
+        selectedDimensions = emptyArray;
+        selectedLine = GS->boxCount;
+    }
 
-    BufSetPos(OB, baseX, baseY + GS->selectedListLine);
+    BufSetPos(OB, baseX, baseY + selectedLine);
     BufWrite(OB, "Box ", 4);
-    BufWriteUInt32(OB, GS->selectedListLine);
+    BufWriteUInt32(OB, selectedLine);
     BufWrite(OB, ":", 1);
     int32 newX = baseX;
-    newX += 4 + CharLenUInt32(GS->selectedListLine) + 2;
+    newX += 4 + CharLenUInt32(selectedLine) + 2;
     for (int i = 0; i < GS->selectedDimension; i++)
     {
         newX += 2;
-        newX += CharLenUInt32(selectedBox->dimensions[i]);
+        newX += CharLenUInt32(selectedDimensions[i]);
     }
-    BufSetPos(OB, newX, baseY + GS->selectedListLine);
+    BufSetPos(OB, newX, baseY + selectedLine);
     switch (GS->selectedDimension)
     {
     case 0:
@@ -360,7 +402,7 @@ internal void FillBuffer(
     }
 
     // Selected dimension number
-    BufWriteUInt32(OB, selectedBox->dimensions[GS->selectedDimension]);
+    BufWriteUInt32(OB, selectedDimensions[GS->selectedDimension]);
 
     BufWrite(OB,
              SET_DEFAULT_ATTRIBUTES,

@@ -54,6 +54,7 @@ struct box
 struct game_state
 {
     int32 selectedListLine;
+    int32 selectedNewBox;
     int32 selectedDimension;
 
     box boxes[12];
